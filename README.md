@@ -89,16 +89,19 @@ Inverted list for 'nonsense' (1 document(s)):
 
 ### `find <term> [<term> ...]`
 Returns all pages containing **every** query term (conjunctive
-processing — L13). The search is case-insensitive.
+processing — L13), ranked by **TF-IDF score** (sublinear tf with
+standard inverse document frequency, per Manning et al. *Introduction
+to Information Retrieval* ch. 6). Highest-scoring page first; ties are
+broken by URL for reproducible output. The search is case-insensitive.
 
 ```
 > find indifference
-1 matching page(s):
-  https://quotes.toscrape.com/page/3/
+1 matching page(s) (ranked by TF-IDF):
+  [1.6990] https://quotes.toscrape.com/page/3/
 
 > find good friends
-1 matching page(s):
-  https://quotes.toscrape.com/page/3/
+1 matching page(s) (ranked by TF-IDF):
+  [1.4771] https://quotes.toscrape.com/page/3/
 ```
 
 `quit` (or Ctrl-D) exits the shell.
@@ -134,6 +137,7 @@ import path, and only `pytest` loads it.
 | **Frequencies + positions per posting** | The brief asks for "frequency, position, etc". Positions also keep the door open for phrase queries (L12 slide 15). |
 | **Single JSON file persistence** | L12 slide 25 motivates putting all inverted lists into one file rather than one-file-per-term. JSON is human-readable so the index can be inspected directly during development. |
 | **Term-at-a-time conjunctive `find`** | L13 describes term-at-a-time evaluation and conjunctive processing as the appropriate strategy for multi-word queries on small inverted lists. Intersecting posting-list document sets is O(min) in the smallest list. |
+| **TF-IDF ranking (lnc.ltc)** | Conjunctive intersection picks *which* documents match; TF-IDF picks *what order* to show them in. Sublinear tf (`1 + log10(freq)`) prevents one heavily-repeated term from dominating, and idf (`log10(N/df)`) damps common terms. Standard formulation per Manning et al., consistent with L12/L13's term-weighting discussion. URL is used as a deterministic tie-breaker. |
 | **6-second politeness window** | Mandated by the brief; L9 slide 12 describes this as the standard mechanism for being a well-behaved crawler. |
 
 ## Dependencies

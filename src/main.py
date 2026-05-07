@@ -82,7 +82,7 @@ def cmd_print(state, args):
 
 
 def cmd_find(state, args):
-    """Find pages containing all given query terms (conjunctive)."""
+    """Find pages containing all given query terms, ranked by TF-IDF."""
     if not args:
         print("Usage: find <term> [<term> ...]")
         return
@@ -93,9 +93,9 @@ def cmd_find(state, args):
     if not matches:
         print("No matching pages.")
         return
-    print(f"{len(matches)} matching page(s):")
-    for url in matches:
-        print(f"  {url}")
+    print(f"{len(matches)} matching page(s) (ranked by TF-IDF):")
+    for url, score in matches:
+        print(f"  [{score:.4f}] {url}")
 
 
 HELP_TEXT = (
