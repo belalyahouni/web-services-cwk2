@@ -1,5 +1,7 @@
 # COMP3011 Coursework 2 — Search Engine Tool
 
+[![Tests](https://github.com/belalyahouni/web-services-cwk2/actions/workflows/tests.yml/badge.svg)](https://github.com/belalyahouni/web-services-cwk2/actions/workflows/tests.yml)
+
 A small search engine for [`https://quotes.toscrape.com/`](https://quotes.toscrape.com/).
 It crawls the site, builds an inverted index over all word occurrences, and
 exposes a command-line shell with `build`, `load`, `print`, and `find`
