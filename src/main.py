@@ -15,9 +15,12 @@ This module was developed with AI assistance (Claude); all design
 choices were reviewed and adjusted by the author.
 """
 
+from __future__ import annotations
+
 import os
 import shlex
 import sys
+from typing import TypedDict
 
 # Make the imports below resolve regardless of how this file is launched.
 # `python src/main.py` already puts src/ first on sys.path; `python -m
@@ -27,8 +30,15 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from crawler import Crawler
-from indexer import build_index, load_index, save_index
+from indexer import DocMap, Index, build_index, load_index, save_index
 from search import find, phrase, print_postings
+
+
+class State(TypedDict, total=False):
+    """Shared REPL state - loaded lazily by `build` or `load`."""
+
+    index: Index
+    doc_map: DocMap
 
 
 SEED_URL = "https://quotes.toscrape.com/"
@@ -39,7 +49,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_PATH = os.path.join(REPO_ROOT, "data", "index.json")
 
 
-def cmd_build(state):
+def cmd_build(state: State) -> None:
     """Crawl the target site, build the inverted index, persist to disk."""
     print(f"Crawling {SEED_URL} (politeness window: 6 seconds)")
     crawler = Crawler(SEED_URL)
@@ -57,7 +67,7 @@ def cmd_build(state):
     print(f"Saved to {INDEX_PATH}")
 
 
-def cmd_load(state):
+def cmd_load(state: State) -> None:
     """Load the previously saved index from disk."""
     if not os.path.exists(INDEX_PATH):
         print(f"No saved index found at {INDEX_PATH}. Run 'build' first.")
@@ -68,7 +78,7 @@ def cmd_load(state):
     print(f"Loaded index ({len(index)} unique terms across {len(doc_map)} documents).")
 
 
-def cmd_print(state, args):
+def cmd_print(state: State, args: list[str]) -> None:
     """Print the inverted-list entry for a single word."""
     if not args:
         print("Usage: print <word>")
@@ -81,7 +91,7 @@ def cmd_print(state, args):
     print_postings(state["index"], state["doc_map"], args[0])
 
 
-def cmd_find(state, args):
+def cmd_find(state: State, args: list[str]) -> None:
     """Find pages containing all given query terms, ranked by TF-IDF."""
     if not args:
         print("Usage: find <term> [<term> ...]")
@@ -98,7 +108,7 @@ def cmd_find(state, args):
         print(f"  [{score:.4f}] {url}")
 
 
-def cmd_phrase(state, args):
+def cmd_phrase(state: State, args: list[str]) -> None:
     """Find pages containing the args as a consecutive phrase."""
     if not args:
         print('Usage: phrase <term> [<term> ...]   or   phrase "term1 term2"')
@@ -128,9 +138,9 @@ HELP_TEXT = (
 )
 
 
-def repl():
+def repl() -> None:
     """Run the interactive command shell."""
-    state = {}
+    state: State = {}
     print("COMP3011 Search Engine Tool")
     print("Type 'help' for commands, 'quit' to exit.")
     while True:

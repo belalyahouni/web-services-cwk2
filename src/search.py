@@ -42,12 +42,14 @@ This module was developed with AI assistance (Claude); all design
 choices were reviewed and adjusted by the author.
 """
 
+from __future__ import annotations
+
 import math
 
-from indexer import tokenise
+from indexer import DocMap, Index, tokenise
 
 
-def print_postings(index, doc_map, word):
+def print_postings(index: Index, doc_map: DocMap, word: str) -> None:
     """Print the inverted-list entry for `word` to standard output."""
     word = (word or "").strip().lower()
     if not word:
@@ -67,7 +69,9 @@ def print_postings(index, doc_map, word):
         print(f"    positions = {positions}")
 
 
-def find(index, doc_map, query_terms):
+def find(
+    index: Index, doc_map: DocMap, query_terms: list[str]
+) -> list[tuple[str, float]]:
     """Return ranked (url, score) pairs for pages containing every query term.
 
     Conjunctive (AND) intersection picks the candidate documents;
@@ -106,7 +110,9 @@ def find(index, doc_map, query_terms):
     return _rank_by_tfidf(index, doc_map, tokens, matched_ids)
 
 
-def phrase(index, doc_map, query_terms):
+def phrase(
+    index: Index, doc_map: DocMap, query_terms: list[str]
+) -> list[tuple[str, int]]:
     """Return ranked (url, occurrences) pairs for pages containing
     `query_terms` as a consecutive phrase.
 
@@ -183,7 +189,12 @@ def phrase(index, doc_map, query_terms):
     return results
 
 
-def _rank_by_tfidf(index, doc_map, tokens, matched_ids):
+def _rank_by_tfidf(
+    index: Index,
+    doc_map: DocMap,
+    tokens: list[str],
+    matched_ids: set[str],
+) -> list[tuple[str, float]]:
     """Score each matched document by summed TF-IDF and sort.
 
     Sublinear tf and standard idf; see module docstring for the formula.
