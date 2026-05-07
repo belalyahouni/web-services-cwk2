@@ -157,6 +157,90 @@ import path, and only `pytest` loads it.
 | **Positional phrase search** | Storing per-token positions at index time (L12 slide 15) lets us answer adjacency queries directly: token *i* of the phrase must sit at position *p+i* in the document for some *p* where token 0 sits. This is the textbook positional-merge approach (Manning et al. ch. 2.4). Each candidate document costs `O(F * (k-1))` where *F* is the frequency of the first token and *k* is the phrase length, because position sets give O(1) "is *p+i* present?" lookups. |
 | **6-second politeness window** | Mandated by the brief; L9 slide 12 describes this as the standard mechanism for being a well-behaved crawler. |
 
+## Architecture
+
+The pipeline is three decoupled modules wired together by the CLI in
+`main.py`. Data flows in one direction; each module is independently
+testable.
+
+```
+   +-----------+      {url: html}      +-----------+      (index, doc_map)      +----------+
+   |  crawler  |---------------------->|  indexer  |--------------------------->|  search  |
+   |  (BFS)    |                       | (HTML +   |                            | (find,   |
+   |           |                       | tokens)   |                            |  phrase) |
+   +-----------+                       +-----------+                            +----------+
+        |                                    |                                       ^
+        | 6s politeness                      | save_index / load_index               |
+        | host-restricted                    v                                       |
+        | deque frontier                  data/index.json (single JSON file) --------+
+```
+
+The crawler is a host-restricted BFS: a `collections.deque` frontier
+gives O(1) `popleft`, a visited set blocks revisits, and a 6-second
+politeness window separates successive requests. The indexer parses
+HTML with BeautifulSoup (stripping `<script>`, `<style>`, and
+`<noscript>`), tokenises in one `re.findall(r"[a-z0-9]+", ...)` pass
+over lowercased text, and produces
+`{term: {doc_id: {frequency, positions}}}` plus a `doc_map` of
+stringified ordinal ids to URLs (string keys round-trip cleanly through
+JSON). Persistence is one JSON file holding both halves under `index`
+and `doc_map`. Search has two modes: `find` does conjunctive
+intersection of posting-list doc-id sets and ranks survivors by TF-IDF
+(sublinear `tf` times standard `idf`); `phrase` does a positional merge
+on the stored `positions` lists, treating them as sets so each
+"is `p+i` present?" check is O(1). `main.py` is the orchestrator and
+contains no IR logic.
+
+## Complexity
+
+Asymptotic costs use the standard RAM model with hash-table lookups
+treated as expected O(1). Let *D* be the number of crawled documents,
+*T* the total tokens across them, *t* the tokens in one document, *q*
+the number of query terms, *M* the number of conjunctive matches, *F*
+the frequency of the first phrase token in a candidate document, and
+`|posting_i|` the length of the *i*-th term's posting list.
+
+| Operation | Time | Space | Notes |
+| --- | --- | --- | --- |
+| Crawl one page | O(1) compute, dominated by the 6 s sleep | O(page) | `_wait_for_politeness` blocks until 6 s have elapsed since the previous request; HTTP and parse time are negligible against that. |
+| Tokenise document of *t* tokens | O(t) | O(t) | One regex pass in `indexer.tokenise`. |
+| `build_index` over *D* docs, *T* tokens | O(T) | O(T) | One tokenisation pass per document, one expected-O(1) `setdefault` + append per token. |
+| `print <word>` | O(1) average lookup, O(p) to print | O(1) extra | One dict get on `index[word]`; iteration cost is the size of the posting list *p*. |
+| `find` over *q* tokens, *m* posting lists | O(sum of \|posting_i\|) for set-build + intersect, plus O(M log M) sort by score | O(min \|posting_i\|) for the result set | `search.find` builds one `set` per term's posting keys, calls `set.intersection`, then `_rank_by_tfidf` scores M survivors and sorts. A missing term short-circuits to `[]`. |
+| `phrase` over *k* tokens | O(F · (k − 1)) per candidate doc, plus the same intersection cost as `find` | O(sum of position-list sizes for candidates) | Per candidate, `search.phrase` walks the first token's *F* positions and checks adjacency at offsets 1..k-1 against position **sets** (O(1) membership). Single-token degenerate case sorts by raw frequency. |
+| `save_index` | O(T) | O(T) on disk | Single `json.dump` over the whole structure. |
+| `load_index` | O(T) | O(T) | Single `json.load`. |
+
+Conjunctive processing is bounded by the rarest term: one query token
+with a tiny posting list caps both *M* and the intersection cost (L13's
+rare-term short-circuit).
+
+## References
+
+- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to
+  Information Retrieval*. Cambridge University Press. Chapter 2 (term
+  vocabulary and postings, including positional indexes — the basis of
+  the `positions` field on every posting and of the positional-merge
+  algorithm in `search.phrase`); chapter 6 (term weighting and the
+  vector-space model — the formulation used by `_rank_by_tfidf`,
+  specifically sublinear `tf` and standard `idf`).
+- COMP3011 lecture slides: L9 (Web Crawling — frontier, politeness
+  policies), L11 (Parsing & Tokenisation — two-pass HTML/text
+  processing), L12 (Indexing — inverted files, single-file persistence,
+  positions), L13 (Query Processing — term-at-a-time conjunctive
+  evaluation).
+- `requests` HTTP client documentation —
+  <https://requests.readthedocs.io/>.
+- `beautifulsoup4` HTML parser documentation —
+  <https://www.crummy.com/software/BeautifulSoup/bs4/doc/>.
+- BM25 (Robertson & Zaragoza, *The Probabilistic Relevance Framework:
+  BM25 and Beyond*, 2009) was considered as a more sophisticated
+  ranking function — it adds document-length normalisation and term
+  saturation that plain TF-IDF lacks — but was not adopted because the
+  small, length-uniform corpus of `quotes.toscrape.com` does not
+  exercise the differences; it would be the natural next step on a
+  larger or more heterogeneous collection.
+
 ## Dependencies
 
 Listed in `requirements.txt`:
