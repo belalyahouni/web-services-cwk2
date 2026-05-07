@@ -18,6 +18,7 @@ choices were reviewed and adjusted by the author.
 """
 
 import time
+from collections import deque
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import requests
@@ -55,13 +56,15 @@ class Crawler:
         silently skipped (handled gracefully per L9 challenges and the
         coursework's "handle errors gracefully" tip).
         """
-        frontier = [self._normalise(self.seed_url)]
+        # deque gives O(1) popleft for the BFS dequeue; a plain list would
+        # be O(n) per pop because every remaining element shifts left.
+        frontier = deque([self._normalise(self.seed_url)])
         queued = set(frontier)
         visited = set()
         pages = {}
 
         while frontier:
-            url = frontier.pop(0)
+            url = frontier.popleft()
             if url in visited:
                 continue
             visited.add(url)
