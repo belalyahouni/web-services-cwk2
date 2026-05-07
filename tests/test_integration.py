@@ -84,12 +84,14 @@ def test_full_pipeline_crawl_to_search(tmp_path):
     assert loaded_index == index
     assert loaded_doc_map == doc_map
 
-    # Search the loaded index using the real search functions.
+    # Search the loaded index using the real search functions. find()
+    # returns ranked (url, score) pairs; for these assertions we just
+    # check the URL set / first URL.
     journey = find(loaded_index, loaded_doc_map, ["journey"])
-    assert journey == ["http://site.test/quotes/1"]
+    assert [url for url, _score in journey] == ["http://site.test/quotes/1"]
 
     # A word that appears on both quote pages but not the homepage.
-    thousand = set(find(loaded_index, loaded_doc_map, ["thousand"]))
+    thousand = {url for url, _score in find(loaded_index, loaded_doc_map, ["thousand"])}
     assert thousand == {
         "http://site.test/quotes/1",
         "http://site.test/quotes/2",
@@ -99,7 +101,9 @@ def test_full_pipeline_crawl_to_search(tmp_path):
     journey_thousand = find(
         loaded_index, loaded_doc_map, ["journey", "thousand"]
     )
-    assert journey_thousand == ["http://site.test/quotes/1"]
+    assert [url for url, _score in journey_thousand] == [
+        "http://site.test/quotes/1",
+    ]
 
     # Off-site URL must not appear anywhere.
     for url in loaded_doc_map.values():
