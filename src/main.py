@@ -19,9 +19,12 @@ import os
 import shlex
 import sys
 
-# When this file is run directly (`python src/main.py`), the directory
-# containing it is already first on sys.path, so `from crawler import ...`
-# below resolves to `src/crawler.py`.
+# Make the imports below resolve regardless of how this file is launched.
+# `python src/main.py` already puts src/ first on sys.path; `python -m
+# src.main` does not (it puts the cwd first), so we add src/ explicitly.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 from crawler import Crawler
 from indexer import build_index, load_index, save_index

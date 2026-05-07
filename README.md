@@ -39,10 +39,13 @@ pip install -r requirements.txt
 
 ## Usage
 
-Launch the interactive shell:
+Launch the interactive shell (either invocation works, run from the
+project root):
 
 ```bash
 python src/main.py
+# or, equivalently:
+python -m src.main
 ```
 
 The shell offers four commands:
