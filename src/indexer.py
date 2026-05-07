@@ -24,8 +24,11 @@ This module was developed with AI assistance (Claude); all design
 choices were reviewed and adjusted by the author.
 """
 
+from __future__ import annotations
+
 import json
 import re
+from typing import TypedDict
 
 from bs4 import BeautifulSoup
 
@@ -40,7 +43,22 @@ TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 NON_CONTENT_TAGS = ("script", "style", "noscript")
 
 
-def extract_text(html):
+class Posting(TypedDict):
+    """One document's entry in a term's posting list."""
+
+    frequency: int
+    positions: list[int]
+
+
+# Term -> doc_id -> Posting. Doc-ids are stringified ordinals so the
+# whole structure round-trips through JSON without type coercion.
+Index = dict[str, dict[str, Posting]]
+
+# Doc_id -> URL.
+DocMap = dict[str, str]
+
+
+def extract_text(html: str) -> str:
     """Return the visible text of an HTML document (L11 pass 1)."""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(NON_CONTENT_TAGS):
@@ -48,7 +66,7 @@ def extract_text(html):
     return soup.get_text(separator=" ")
 
 
-def tokenise(text):
+def tokenise(text: str) -> list[str]:
     """Lowercase the text and split it into alphanumeric tokens (L11 pass 2).
 
     All tokens are kept (including stopwords and numbers). Positions are
@@ -58,7 +76,7 @@ def tokenise(text):
     return TOKEN_PATTERN.findall(text.lower())
 
 
-def build_index(pages):
+def build_index(pages: dict[str, str]) -> tuple[Index, DocMap]:
     """Build an inverted index from a {url: html} mapping.
 
     Returns:
@@ -68,8 +86,8 @@ def build_index(pages):
     doc_id is a string so the structure round-trips through JSON without
     type coercion.
     """
-    doc_map = {}
-    index = {}
+    doc_map: DocMap = {}
+    index: Index = {}
     for ordinal, (url, html) in enumerate(pages.items()):
         doc_id = str(ordinal)
         doc_map[doc_id] = url
@@ -82,13 +100,13 @@ def build_index(pages):
     return index, doc_map
 
 
-def save_index(path, index, doc_map):
+def save_index(path: str, index: Index, doc_map: DocMap) -> None:
     """Persist the index and document map to a single JSON file."""
     with open(path, "w", encoding="utf-8") as handle:
         json.dump({"doc_map": doc_map, "index": index}, handle)
 
 
-def load_index(path):
+def load_index(path: str) -> tuple[Index, DocMap]:
     """Load an index previously written by `save_index`.
 
     Returns (index, doc_map).

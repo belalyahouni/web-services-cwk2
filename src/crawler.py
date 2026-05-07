@@ -17,6 +17,8 @@ This module was developed with AI assistance (Claude); all design
 choices were reviewed and adjusted by the author.
 """
 
+from __future__ import annotations
+
 import time
 from collections import deque
 from urllib.parse import urldefrag, urljoin, urlparse
@@ -35,11 +37,11 @@ class Crawler:
 
     def __init__(
         self,
-        seed_url,
-        politeness=DEFAULT_POLITENESS_SECONDS,
-        timeout=DEFAULT_TIMEOUT_SECONDS,
-        user_agent=DEFAULT_USER_AGENT,
-    ):
+        seed_url: str,
+        politeness: float = DEFAULT_POLITENESS_SECONDS,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        user_agent: str = DEFAULT_USER_AGENT,
+    ) -> None:
         self.seed_url = seed_url
         self.politeness = politeness
         self.timeout = timeout
@@ -48,7 +50,7 @@ class Crawler:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent
 
-    def crawl(self, max_pages=None, verbose=True):
+    def crawl(self, max_pages: int | None = None, verbose: bool = True) -> dict[str, str]:
         """Crawl the website starting from the seed URL.
 
         Returns a dict mapping each successfully fetched URL to its raw
@@ -58,10 +60,10 @@ class Crawler:
         """
         # deque gives O(1) popleft for the BFS dequeue; a plain list would
         # be O(n) per pop because every remaining element shifts left.
-        frontier = deque([self._normalise(self.seed_url)])
-        queued = set(frontier)
-        visited = set()
-        pages = {}
+        frontier: deque[str] = deque([self._normalise(self.seed_url)])
+        queued: set[str] = set(frontier)
+        visited: set[str] = set()
+        pages: dict[str, str] = {}
 
         while frontier:
             url = frontier.popleft()
@@ -87,7 +89,7 @@ class Crawler:
 
         return pages
 
-    def _fetch(self, url):
+    def _fetch(self, url: str) -> str | None:
         """Fetch a single URL, respecting the politeness window.
 
         Returns the response body as a string on success, or None on any
@@ -110,21 +112,21 @@ class Crawler:
             return None
         return response.text
 
-    def _wait_for_politeness(self):
+    def _wait_for_politeness(self) -> None:
         """Sleep until at least `self.politeness` seconds have passed
         since the previous request (L9 politeness policy)."""
         elapsed = time.monotonic() - self._last_fetch_time
         if elapsed < self.politeness:
             time.sleep(self.politeness - elapsed)
 
-    def _extract_links(self, base_url, html):
+    def _extract_links(self, base_url: str, html: str) -> list[str]:
         """Parse anchor tags and return absolute, host-internal URLs.
 
         Fragments are stripped (so /a and /a#section count as the same
         page) and only http(s) URLs on the seed host are kept.
         """
         soup = BeautifulSoup(html, "html.parser")
-        links = []
+        links: list[str] = []
         for anchor in soup.find_all("a", href=True):
             absolute = urljoin(base_url, anchor["href"])
             absolute = self._normalise(absolute)
@@ -137,7 +139,7 @@ class Crawler:
         return links
 
     @staticmethod
-    def _normalise(url):
+    def _normalise(url: str) -> str:
         """Drop the URL fragment so duplicates are detected reliably."""
         defragged, _ = urldefrag(url)
         return defragged
