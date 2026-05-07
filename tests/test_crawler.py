@@ -174,3 +174,94 @@ def test_max_pages_limit_is_honoured():
         result = crawler.crawl(max_pages=3, verbose=False)
 
     assert len(result) == 3
+
+
+def test_non_html_content_type_is_skipped():
+    """Links pointing at non-HTML resources (PDFs, images) should not be
+    treated as pages."""
+    seed = "<html><a href='/file.pdf'>pdf</a></html>"
+
+    def fake_get(url, **_kwargs):
+        if url == "https://example.com/":
+            return _html_response(seed)
+        # PDF response: content-type is not text/html.
+        return _html_response(
+            "%PDF-1.4 ...", content_type="application/pdf"
+        )
+
+    crawler = Crawler("https://example.com/", politeness=0.0)
+    with patch.object(crawler.session, "get", side_effect=fake_get):
+        result = crawler.crawl(verbose=False)
+
+    assert "https://example.com/file.pdf" not in result
+    assert "https://example.com/" in result
+
+
+def test_non_http_schemes_are_filtered_out():
+    """Anchors with mailto:, javascript:, tel: schemes must not be crawled."""
+    seed = (
+        "<html>"
+        "<a href='mailto:hi@example.com'>email</a>"
+        "<a href='javascript:void(0)'>js</a>"
+        "<a href='tel:+1234'>phone</a>"
+        "<a href='/real'>real</a>"
+        "</html>"
+    )
+    real = "<html>real page</html>"
+    seen = []
+
+    def fake_get(url, **_kwargs):
+        seen.append(url)
+        if url == "https://example.com/":
+            return _html_response(seed)
+        if url == "https://example.com/real":
+            return _html_response(real)
+        raise AssertionError(f"crawler should not request {url}")
+
+    crawler = Crawler("https://example.com/", politeness=0.0)
+    with patch.object(crawler.session, "get", side_effect=fake_get):
+        result = crawler.crawl(verbose=False)
+
+    assert set(result.keys()) == {
+        "https://example.com/",
+        "https://example.com/real",
+    }
+    # The non-http schemes were never requested.
+    for url in seen:
+        assert url.startswith("https://example.com/")
+
+
+def test_relative_urls_are_resolved_against_the_base():
+    """Anchors using relative paths must resolve to absolute internal URLs."""
+    seed = "<html><a href='./sub/page'>p</a><a href='../top'>t</a></html>"
+    sub = "<html>sub page</html>"
+    top = "<html>top page</html>"
+
+    def fake_get(url, **_kwargs):
+        return _html_response({
+            "https://example.com/start/": seed,
+            "https://example.com/start/sub/page": sub,
+            "https://example.com/top": top,
+        }.get(url, ""))
+
+    crawler = Crawler("https://example.com/start/", politeness=0.0)
+    with patch.object(crawler.session, "get", side_effect=fake_get):
+        result = crawler.crawl(verbose=False)
+
+    assert "https://example.com/start/sub/page" in result
+    assert "https://example.com/top" in result
+
+
+def test_verbose_mode_prints_progress(capsys):
+    """When verbose=True the crawler prints a fetching line per page."""
+    pages_by_url = {"https://example.com/": "<html>only</html>"}
+
+    def fake_get(url, **_kwargs):
+        return _html_response(pages_by_url[url])
+
+    crawler = Crawler("https://example.com/", politeness=0.0)
+    with patch.object(crawler.session, "get", side_effect=fake_get):
+        crawler.crawl(verbose=True)
+
+    captured = capsys.readouterr()
+    assert "fetching https://example.com/" in captured.out
