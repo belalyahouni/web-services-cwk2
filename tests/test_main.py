@@ -181,6 +181,44 @@ def test_cmd_find_lists_matching_urls():
     assert "matching page(s)" in output
 
 
+# ---- cmd_phrase ---------------------------------------------------------
+
+def test_cmd_phrase_warns_when_no_index_is_loaded():
+    output = _capture(main.cmd_phrase, {}, ["good", "day"])
+    assert "No index loaded" in output
+
+
+def test_cmd_phrase_with_no_args_prints_usage():
+    output = _capture(main.cmd_phrase, {"index": {}, "doc_map": {}}, [])
+    assert "Usage" in output
+
+
+def test_cmd_phrase_reports_no_matches_when_phrase_absent():
+    state = {
+        "index": {
+            "good": {"0": {"frequency": 1, "positions": [0]}},
+            "evening": {"0": {"frequency": 1, "positions": [10]}},  # not adjacent
+        },
+        "doc_map": {"0": "http://x/p"},
+    }
+    output = _capture(main.cmd_phrase, state, ["good", "evening"])
+    assert "No pages contain that phrase" in output
+
+
+def test_cmd_phrase_lists_pages_with_occurrence_counts():
+    state = {
+        "index": {
+            "good": {"0": {"frequency": 1, "positions": [0]}},
+            "day":  {"0": {"frequency": 1, "positions": [1]}},
+        },
+        "doc_map": {"0": "http://x/p"},
+    }
+    output = _capture(main.cmd_phrase, state, ["good", "day"])
+    assert "http://x/p" in output
+    assert "1 occurrence" in output
+    assert "page(s) containing the phrase" in output
+
+
 # ---- repl loop ----------------------------------------------------------
 
 def _scripted_input(lines):
@@ -210,6 +248,23 @@ def test_repl_help_command_prints_help(monkeypatch):
     assert "load" in output
     assert "print" in output
     assert "find" in output
+    assert "phrase" in output
+
+
+def test_repl_dispatches_phrase_command(monkeypatch, tmp_path):
+    """End-to-end through the REPL: build then run a phrase query."""
+    index_path = tmp_path / "index.json"
+    monkeypatch.setattr(main, "Crawler", _FakeCrawler)
+    monkeypatch.setattr(main, "INDEX_PATH", str(index_path))
+    monkeypatch.setattr(
+        builtins,
+        "input",
+        _scripted_input(["build", "phrase good morning", "quit"]),
+    )
+    output = _capture(main.repl)
+    # Only the page with adjacent "good morning" matches.
+    assert "http://x/p1" in output
+    assert "http://x/p2" not in output.split("page(s) containing")[1]
 
 
 def test_repl_unknown_command_is_reported(monkeypatch):

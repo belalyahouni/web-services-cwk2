@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 import pytest
 
 from indexer import build_index
-from search import find, print_postings
+from search import find, phrase, print_postings
 
 
 # A tiny fixed corpus so the assertions are easy to read.
@@ -188,6 +188,115 @@ def test_find_idf_demotes_common_terms():
     assert _url_set(matches) == set(doc_map.values())
     for _url, score in matches:
         assert score == pytest.approx(0.0)
+
+
+# ---- phrase -------------------------------------------------------------
+
+def test_phrase_finds_consecutive_words(corpus):
+    """'good morning' is consecutive only on p1."""
+    index, doc_map = corpus
+    matches = phrase(index, doc_map, ["good", "morning"])
+    assert _urls(matches) == ["http://example.com/p1"]
+
+
+def test_phrase_does_not_match_non_adjacent_words():
+    """Words that both appear but not adjacently are not a phrase match."""
+    pages = {
+        "http://x/adjacent": "<html>good friends forever</html>",
+        "http://x/separated": "<html>good and kind friends</html>",
+    }
+    index, doc_map = build_index(pages)
+    matches = phrase(index, doc_map, ["good", "friends"])
+    assert _urls(matches) == ["http://x/adjacent"]
+
+
+def test_phrase_counts_multiple_occurrences():
+    """A phrase occurring twice on a page outranks a page where it occurs once."""
+    pages = {
+        "http://x/twice": "<html>good day good day evening</html>",
+        "http://x/once": "<html>just one good day here</html>",
+    }
+    index, doc_map = build_index(pages)
+    matches = phrase(index, doc_map, ["good", "day"])
+    assert _urls(matches) == ["http://x/twice", "http://x/once"]
+    assert matches[0][1] == 2
+    assert matches[1][1] == 1
+
+
+def test_phrase_three_word():
+    """Phrase search must work for queries longer than two tokens."""
+    pages = {
+        "http://x/exact": "<html>to be or not to be</html>",
+        "http://x/words_present": "<html>be or to not</html>",
+    }
+    index, doc_map = build_index(pages)
+    matches = phrase(index, doc_map, ["to", "be", "or"])
+    assert _urls(matches) == ["http://x/exact"]
+    # "to be or" appears once at positions 0-1-2.
+    assert matches[0][1] == 1
+
+
+def test_phrase_is_case_insensitive(corpus):
+    index, doc_map = corpus
+    lower = phrase(index, doc_map, ["good", "morning"])
+    upper = phrase(index, doc_map, ["GOOD", "MORNING"])
+    assert lower == upper
+
+
+def test_phrase_strips_punctuation(corpus):
+    """`phrase good! morning` should behave like `phrase good morning`."""
+    index, doc_map = corpus
+    bare = phrase(index, doc_map, ["good", "morning"])
+    punctuated = phrase(index, doc_map, ["good!", "morning."])
+    assert bare == punctuated
+
+
+def test_phrase_handles_quoted_argument(corpus):
+    """Whether the user typed `phrase good morning` or `phrase "good morning"`,
+    main.py passes args through; tokenisation produces the same tokens."""
+    index, doc_map = corpus
+    split = phrase(index, doc_map, ["good", "morning"])
+    quoted = phrase(index, doc_map, ["good morning"])  # what shlex yields for quoted input
+    assert split == quoted
+
+
+def test_phrase_single_word_falls_back_to_frequency():
+    """A 1-token 'phrase' is just every doc containing that word, ranked by raw frequency."""
+    pages = {
+        "http://x/often": "<html>" + ("good " * 5) + "</html>",
+        "http://x/once": "<html>good day</html>",
+    }
+    index, doc_map = build_index(pages)
+    matches = phrase(index, doc_map, ["good"])
+    assert _urls(matches) == ["http://x/often", "http://x/once"]
+    assert matches[0][1] == 5
+    assert matches[1][1] == 1
+
+
+def test_phrase_with_unknown_term_returns_empty(corpus):
+    index, doc_map = corpus
+    assert phrase(index, doc_map, ["good", "nonexistent"]) == []
+
+
+def test_phrase_with_empty_query(corpus):
+    index, doc_map = corpus
+    assert phrase(index, doc_map, []) == []
+
+
+def test_phrase_punctuation_only_query(corpus):
+    index, doc_map = corpus
+    assert phrase(index, doc_map, ["!?,."]) == []
+
+
+def test_phrase_breaks_ties_by_url():
+    """Equal occurrence counts are returned in URL order."""
+    pages = {
+        "http://x/zebra": "<html>good day</html>",
+        "http://x/apple": "<html>good day</html>",
+    }
+    index, doc_map = build_index(pages)
+    matches = phrase(index, doc_map, ["good", "day"])
+    assert _urls(matches) == ["http://x/apple", "http://x/zebra"]
 
 
 # ---- print_postings -----------------------------------------------------
