@@ -104,6 +104,20 @@ broken by URL for reproducible output. The search is case-insensitive.
   [1.4771] https://quotes.toscrape.com/page/3/
 ```
 
+### `phrase <term> [<term> ...]`
+Returns pages containing the given words **as a consecutive phrase**,
+using the per-token positions stored in the inverted index (L12 slide
+15 "Positions"). Pages are ranked by phrase-occurrence count
+descending (URL tie-breaker). Quoted and unquoted forms produce the
+same result; `find` and `phrase` differ in that `find` matches any
+co-occurrence whereas `phrase` requires adjacency.
+
+```
+> phrase "good friends"
+1 page(s) containing the phrase:
+  [1 occurrence] https://quotes.toscrape.com/page/3/
+```
+
 `quit` (or Ctrl-D) exits the shell.
 
 ## Testing
@@ -138,6 +152,7 @@ import path, and only `pytest` loads it.
 | **Single JSON file persistence** | L12 slide 25 motivates putting all inverted lists into one file rather than one-file-per-term. JSON is human-readable so the index can be inspected directly during development. |
 | **Term-at-a-time conjunctive `find`** | L13 describes term-at-a-time evaluation and conjunctive processing as the appropriate strategy for multi-word queries on small inverted lists. Intersecting posting-list document sets is O(min) in the smallest list. |
 | **TF-IDF ranking (lnc.ltc)** | Conjunctive intersection picks *which* documents match; TF-IDF picks *what order* to show them in. Sublinear tf (`1 + log10(freq)`) prevents one heavily-repeated term from dominating, and idf (`log10(N/df)`) damps common terms. Standard formulation per Manning et al., consistent with L12/L13's term-weighting discussion. URL is used as a deterministic tie-breaker. |
+| **Positional phrase search** | Storing per-token positions at index time (L12 slide 15) lets us answer adjacency queries directly: token *i* of the phrase must sit at position *p+i* in the document for some *p* where token 0 sits. This is the textbook positional-merge approach (Manning et al. ch. 2.4). Each candidate document costs `O(F * (k-1))` where *F* is the frequency of the first token and *k* is the phrase length, because position sets give O(1) "is *p+i* present?" lookups. |
 | **6-second politeness window** | Mandated by the brief; L9 slide 12 describes this as the standard mechanism for being a well-behaved crawler. |
 
 ## Dependencies

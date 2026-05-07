@@ -28,7 +28,7 @@ if _HERE not in sys.path:
 
 from crawler import Crawler
 from indexer import build_index, load_index, save_index
-from search import find, print_postings
+from search import find, phrase, print_postings
 
 
 SEED_URL = "https://quotes.toscrape.com/"
@@ -98,12 +98,31 @@ def cmd_find(state, args):
         print(f"  [{score:.4f}] {url}")
 
 
+def cmd_phrase(state, args):
+    """Find pages containing the args as a consecutive phrase."""
+    if not args:
+        print('Usage: phrase <term> [<term> ...]   or   phrase "term1 term2"')
+        return
+    if "index" not in state:
+        print("No index loaded. Run 'load' or 'build' first.")
+        return
+    matches = phrase(state["index"], state["doc_map"], args)
+    if not matches:
+        print("No pages contain that phrase.")
+        return
+    print(f"{len(matches)} page(s) containing the phrase:")
+    for url, count in matches:
+        suffix = "occurrence" if count == 1 else "occurrences"
+        print(f"  [{count} {suffix}] {url}")
+
+
 HELP_TEXT = (
     "Commands:\n"
     "  build              Crawl the target site and build the index.\n"
     "  load               Load a previously-built index from disk.\n"
     "  print <word>       Show the inverted-list entry for a word.\n"
-    "  find <term> ...    Find pages containing all given terms.\n"
+    "  find <term> ...    Find pages containing all given terms (TF-IDF ranked).\n"
+    "  phrase <terms>     Find pages containing the words as a consecutive phrase.\n"
     "  help               Show this help message.\n"
     "  quit               Exit the shell."
 )
@@ -146,6 +165,8 @@ def repl():
             cmd_print(state, args)
         elif command == "find":
             cmd_find(state, args)
+        elif command == "phrase":
+            cmd_phrase(state, args)
         else:
             print(f"Unknown command: {command!r}. Type 'help' for a list.")
 

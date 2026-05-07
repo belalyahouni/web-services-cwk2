@@ -4,6 +4,13 @@ Query processing for the COMP3011 search engine tool.
 `print_postings` shows the raw posting list for a term (the `print`
 command in the brief).
 
+`phrase` implements positional phrase search using the per-term
+position lists stored at index time (L12 slide 15 "Positions"). A
+phrase matches when each query token appears in the document at
+consecutive positions: token i must sit at position p+i for some p
+where token 0 sits. This is the textbook positional-merge approach
+described in Manning et al. ch. 2.4.
+
 `find` implements multi-word search with conjunctive processing as
 described in Lecture 13 (Query Processing) and ranks the surviving
 documents by TF-IDF score (lnc.ltc-style):
@@ -97,6 +104,83 @@ def find(index, doc_map, query_terms):
         return []
 
     return _rank_by_tfidf(index, doc_map, tokens, matched_ids)
+
+
+def phrase(index, doc_map, query_terms):
+    """Return ranked (url, occurrences) pairs for pages containing
+    `query_terms` as a consecutive phrase.
+
+    The query is tokenised exactly like the index (so 'good!' and
+    'good' behave the same; quoted CLI args like '"good friends"' and
+    bare args like `good friends` produce the same token sequence). A
+    document matches if there exists a position p in the document
+    where token 0 occurs at p, token 1 at p+1, ..., token k-1 at p+k-1.
+
+    Results are sorted by occurrence count descending; URL is the
+    deterministic tie-breaker. Empty queries, queries that tokenise to
+    nothing, and queries containing any unknown term return [].
+
+    Implementation note: positions are stored as lists at index time
+    (so they round-trip through JSON); we wrap them in sets at query
+    time to get O(1) "is p+i a position of token i" lookups, making
+    each candidate document O(F * (k-1)) where F is the frequency of
+    the first token and k is the phrase length.
+    """
+    if not query_terms:
+        return []
+
+    tokens = []
+    for raw in query_terms:
+        tokens.extend(tokenise(raw))
+    if not tokens:
+        return []
+
+    posting_lookups = []
+    for token in tokens:
+        postings = index.get(token)
+        if not postings:
+            return []
+        posting_lookups.append(postings)
+
+    if len(tokens) == 1:
+        # Single-token "phrase" degenerates to "every doc containing it".
+        # Rank by raw frequency rather than TF-IDF: the user asked for
+        # a phrase, so the natural relevance signal is "how often does
+        # this exact phrase occur".
+        results = []
+        for doc_id, entry in posting_lookups[0].items():
+            url = doc_map.get(doc_id)
+            if url is not None:
+                results.append((url, entry["frequency"]))
+        results.sort(key=lambda pair: (-pair[1], pair[0]))
+        return results
+
+    # Multi-token phrase: candidate docs contain every token; for each,
+    # walk the position list of the first token and check the rest line
+    # up at consecutive offsets.
+    candidate_ids = set.intersection(
+        *(set(postings.keys()) for postings in posting_lookups)
+    )
+    if not candidate_ids:
+        return []
+
+    results = []
+    for doc_id in candidate_ids:
+        position_sets = [
+            set(postings[doc_id]["positions"]) for postings in posting_lookups
+        ]
+        first_positions = posting_lookups[0][doc_id]["positions"]
+        count = 0
+        for p in first_positions:
+            if all((p + offset) in position_sets[offset] for offset in range(1, len(tokens))):
+                count += 1
+        if count > 0:
+            url = doc_map.get(doc_id)
+            if url is not None:
+                results.append((url, count))
+
+    results.sort(key=lambda pair: (-pair[1], pair[0]))
+    return results
 
 
 def _rank_by_tfidf(index, doc_map, tokens, matched_ids):
